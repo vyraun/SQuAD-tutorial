@@ -8,6 +8,7 @@ from functools import reduce
 from load import Loader
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers.embeddings import Embedding
+from keras.engine.training import slice_X
 from keras.layers import Dense, Merge, Dropout, RepeatVector
 from keras.layers import recurrent
 from keras.models import Sequential
@@ -65,34 +66,11 @@ def keep_single_answer_pqas(data):
         if is_one_word(pqa[2]):
             yield pqa
 
-def main(train_raw, test_raw):
-    """Main."""
-    train = list(keep_single_answer_pqas(generate_pqas(train_raw)))
-    test = list(keep_single_answer_pqas(generate_pqas(test_raw, is_test=True)))
-    vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer])
-                          for story, q, answer in train + test)))
-    vocab_size = len(vocab) + 1
-    word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-    story_maxlen = max(map(len, (x for x, _, _ in train + test)))
-    query_maxlen = max(map(len, (x for _, x, _ in train + test)))
-
-    X, Xq, Y = vectorize_stories(train, word_idx, story_maxlen, query_maxlen)
-    tX, tXq, tY = vectorize_stories(test, word_idx, story_maxlen, query_maxlen)
-
-    print('vocab = {}'.format(vocab))
-    print('X.shape = {}'.format(X.shape))
-    print('Xq.shape = {}'.format(Xq.shape))
-    print('Y.shape = {}'.format(Y.shape))
-    print('story_maxlen, query_maxlen = {}, {}'.format(
-        story_maxlen, query_maxlen))
-    print('Build model...')
-
+def compile_model(vocab_size, story_maxlen, query_maxlen):
     RNN = recurrent.LSTM
     EMBED_HIDDEN_SIZE = 50
     SENT_HIDDEN_SIZE = 100
     QUERY_HIDDEN_SIZE = 100
-    BATCH_SIZE = 32
-    EPOCHS = 40
     sentrnn = Sequential()
     sentrnn.add(Embedding(vocab_size, EMBED_HIDDEN_SIZE,
                           input_length=story_maxlen))
@@ -114,11 +92,82 @@ def main(train_raw, test_raw):
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
+    return model
 
-    print('Training')
-    model.fit([X, Xq], Y, batch_size=BATCH_SIZE, nb_epoch=EPOCHS, validation_split=0.05)
-    loss, acc = model.evaluate([tX, tXq], tY, batch_size=BATCH_SIZE)
+def train_model(model, X_train, y_train, X_val, y_val, BATCH_SIZE=32, EPOCHS=1):
+    model.fit(
+        X_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        nb_epoch=EPOCHS,
+        validation_data=(X_val, y_val)
+    )
+
+def test_model(model, X_test, Y_test, BATCH_SIZE=32):
+    loss, acc = model.evaluate(X_test, Y_test, batch_size=BATCH_SIZE)
     print('Test loss / test accuracy = {:.4f} / {:.4f}'.format(loss, acc))
+
+
+def validate_model(model, X_val, y_val, inv):
+    class colors:
+        ok = '\033[92m'
+        fail = '\033[91m'
+        close = '\033[0m'
+    for i in range(10):
+        ind = np.random.randint(0, len(X_val))
+        rowX, rowy = X_val[np.array([ind])], y_val[np.array([ind])]
+        preds = model.predict_classes(rowX, verbose=0)
+        print(preds)
+
+        q = inv(rowX[0])
+        correct = inv(rowy[0])
+        guess = inv(preds[0], calc_argmax=False)
+        print('Q', q[::-1])
+        print('T', rowy[0])
+        print(colors.ok + '☑' + colors.close if correct == guess
+              else colors.fail + '☒' + colors.close, guess)
+        print('---')
+
+
+def main(train_raw, test_raw):
+    train = list(keep_single_answer_pqas(generate_pqas(train_raw)))
+    test = list(keep_single_answer_pqas(generate_pqas(test_raw, is_test=True)))
+
+    vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer])
+                          for story, q, answer in train + test)))
+    word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+    word_idx_inv = dict((i + 1, c) for i, c in enumerate(vocab))
+    story_maxlen = max(map(len, (x for x, _, _ in train + test)))
+    query_maxlen = max(map(len, (x for _, x, _ in train + test)))
+
+    vX, vXq, vY = vectorize_stories(
+        train, word_idx, story_maxlen, query_maxlen)
+    vtX, vtXq, vtY = vectorize_stories(
+        test, word_idx, story_maxlen, query_maxlen)
+
+    X, y = [vX, vXq], vY
+    X_test, y_test = [vtX, vtXq], vtY
+
+    print('vocab = {}'.format(vocab))
+    print('X.shape = {}'.format(vX.shape))
+    print('Xq.shape = {}'.format(vXq.shape))
+    print('Y.shape = {}'.format(vY.shape))
+    print('story_maxlen, query_maxlen = {}, {}'.format(
+        story_maxlen, query_maxlen))
+    print('Build model...')
+
+    model = compile_model(len(vocab) + 1, story_maxlen, query_maxlen)
+
+    print('Training...')
+
+    for iteration in range(1, 200):
+        print()
+        print('-' * 50)
+        print('Iteration', iteration)
+        train_model(model, X, y)
+        # validate_model(model, X, y, word_idx_inv)
+    test_model(model, X_test, y_test)
+
 
 if __name__ == '__main__':
     if(len(sys.argv) <= 2):
