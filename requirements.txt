@@ -1,0 +1,14 @@
+beautifulsoup4==4.4.1
+cloudpickle==0.2.1
+cymem==1.31.2
+murmurhash==0.26.4
+numpy==1.11.0
+plac==0.9.1
+preshed==0.46.4
+requests==2.10.0
+semver==2.4.2
+simplejson==3.8.2
+six==1.10.0
+spacy==0.100.7
+sputnik==0.9.3
+thinc==5.0.8
