@@ -94,13 +94,13 @@ def compile_model(vocab_size, story_maxlen, query_maxlen):
                   metrics=['accuracy'])
     return model
 
-def train_model(model, X_train, y_train, X_val, y_val, BATCH_SIZE=32, EPOCHS=1):
+def train_model(model, X_train, y_train, BATCH_SIZE=32, EPOCHS=1):
     model.fit(
         X_train,
         y_train,
         batch_size=BATCH_SIZE,
         nb_epoch=EPOCHS,
-        validation_data=(X_val, y_val)
+        validation_split=0.05
     )
 
 def test_model(model, X_test, Y_test, BATCH_SIZE=32):
@@ -165,7 +165,7 @@ def main(train_raw, test_raw):
         print('-' * 50)
         print('Iteration', iteration)
         train_model(model, X, y)
-        # validate_model(model, X, y, word_idx_inv)
+        #validate_model(model, X, y, word_idx_inv)
     test_model(model, X_test, y_test)
 
 
