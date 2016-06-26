@@ -20,7 +20,7 @@ nlp = English()
 np.random.seed(1337)
 
 def transform_token(word):
-    return word.lemma_.lower()
+    return word.orth_.lower()
 
 def vectorize_stories(
     data, word_idx_X, word_idx_y, story_maxlen, query_maxlen
@@ -44,8 +44,6 @@ def vectorize_stories(
 
 def generate_pqas(data, is_test=False):
     for index, article in enumerate(data):
-        if (index > 10):
-            continue
         print(article['title'])
         for paragraph in article['paragraphs']:
             try:
@@ -72,7 +70,8 @@ def compile_model(vocab_X_size, vocab_y_size, story_maxlen, query_maxlen, embedd
         weights=[embedding_weights],
         mask_zero=True)
     )
-    #sentrnn.add(Dropout(0.3))
+    sentrnn.add(RNN(EMBED_HIDDEN_SIZE, return_sequences=True))
+    # sentrnn.add(Dropout(0.3))
 
     qrnn = Sequential()
     qrnn.add(Embedding(
@@ -82,14 +81,15 @@ def compile_model(vocab_X_size, vocab_y_size, story_maxlen, query_maxlen, embedd
         weights=[embedding_weights],
         mask_zero=True)
     )
-    #qrnn.add(Dropout(0.3))
+    # qrnn.add(Dropout(0.3))
+    qrnn.add(RNN(EMBED_HIDDEN_SIZE, return_sequences=True))
     qrnn.add(RNN(EMBED_HIDDEN_SIZE, return_sequences=False))
     qrnn.add(RepeatVector(story_maxlen))
 
     model = Sequential()
     model.add(Merge([sentrnn, qrnn], mode='sum'))
     model.add(RNN(EMBED_HIDDEN_SIZE, return_sequences=False))
-    model.add(Dropout(0.3))
+    # model.add(Dropout(0.3))
     model.add(Dense(vocab_y_size, activation='softmax'))
 
     model.compile(optimizer='adam',
@@ -97,7 +97,7 @@ def compile_model(vocab_X_size, vocab_y_size, story_maxlen, query_maxlen, embedd
                   metrics=['accuracy'])
     return model
 
-def train_model(model, X_train, y_train, BATCH_SIZE=32, EPOCHS=20):
+def train_model(model, X_train, y_train, BATCH_SIZE=16, EPOCHS=10):
     model.fit(
         X_train,
         y_train,
@@ -106,7 +106,7 @@ def train_model(model, X_train, y_train, BATCH_SIZE=32, EPOCHS=20):
         validation_split=0.05
     )
 
-def test_model(model, X_test, Y_test, BATCH_SIZE=32):
+def test_model(model, X_test, Y_test, BATCH_SIZE=16):
     loss, acc = model.evaluate(X_test, Y_test, batch_size=BATCH_SIZE)
     print('Test loss / test accuracy = {:.4f} / {:.4f}'.format(loss, acc))
 
@@ -119,7 +119,7 @@ def main(train_raw, test_raw):
             lambda x, y: x | y,
             (
                 set([transform_token(word) for word in answer])
-                for _, _, answer in train + test
+                for s, d, answer in train + test
             )
         )
     )
