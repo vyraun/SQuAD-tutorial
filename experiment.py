@@ -11,31 +11,30 @@ def load_spacy():
     spacy = English()
 
 
+def tokenize_text(c):
+    translator = str.maketrans({
+        key: None for key in string.punctuation})
+    c = c.translate(translator)
+    if spacy is None:
+        for word in c.split():
+            word = word.lower()
+            yield word
+    else:
+        for word in list(spacy(c, tag=False)):
+            word = word.orth_.lower()
+            yield word
+
+
 def compare_context_vocabs(train, dev):
     """Compare the vocabularies in the train and dev sets."""
     def get_context_vocab(data):
         """Get the set of words in the paragraphs of data."""
         set_of_words_in_data = set()
-
-        def add_context_to_word_set(c):
-            """Perform transformations before adding to word set."""
-            translator = str.maketrans({
-                key: None for key in string.punctuation})
-            c = c.translate(translator)
-            if spacy is None:
-                for word in c.split():
-                    word = word.lower()
-                    set_of_words_in_data.add(word)
-            else:
-                for word in list(spacy(c, tag=False)):
-                    word = word.orth_.lower()
-                    set_of_words_in_data.add(word)
-
         for article in data:
             for paragraph in article['paragraphs']:
                 c = paragraph['context']
-                add_context_to_word_set(c)
-
+                c_tokens = tokenize_text(c)
+                set_of_words_in_data |= set(c_tokens)
         return set_of_words_in_data
 
     print("Comparing Context Vocabularies")
@@ -63,6 +62,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if (args.spacy is True):
         load_spacy()
-    train = load_data_file(args.train)
-    dev = load_data_file(args.dev)
+    train, dev = load_data_file(args.train), load_data_file(args.dev)
     compare_context_vocabs(train, dev)
